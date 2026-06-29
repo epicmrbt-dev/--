@@ -1,0 +1,6 @@
+{
+  "name": "生物同好会 観察日記・記録表",
+  "description": "学校の生物同好会向けに、飼育・栽培エリアの担当管理と、部員ごとの観察日記の投稿・共有ができるボードです。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
