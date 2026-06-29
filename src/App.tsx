@@ -16,84 +16,63 @@ import DiarySection from './components/DiarySection';
 import { Leaf, Award, RotateCcw, Info, CheckSquare, CalendarDays } from 'lucide-react';
 import { motion } from 'motion/react';
 
-// Firebase imports
-import { auth, db, signInWithGoogle, logOut } from './lib/firebase';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs } from 'firebase/firestore';
-
 export default function App() {
-  // Google Auth States
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-
-  // Core state from Firestore
-  const [members, setMembers] = useState<Member[]>([]);
-  const [records, setRecords] = useState<RecordTableItem[]>([]);
-  const [diaries, setDiaries] = useState<DiaryEntry[]>([]);
-
-  // Selected Active Member (retained locally in browser)
-  const [activeMemberId, setActiveMemberId] = useState<string>(() => {
-    return localStorage.getItem('biology_club_active_id') || '';
+  // 1. Core state initialization with LocalStorage synchronization
+  const [members, setMembers] = useState<Member[]>(() => {
+    const saved = localStorage.getItem('biology_club_members');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // If there is old demo/mock data (e.g. containing '佐藤 陸'), purge it immediately
+      const hasMockData = parsed.some((m: any) => m.id === 'm1' || m.name === '佐藤 陸');
+      if (hasMockData) {
+        localStorage.removeItem('biology_club_members');
+        localStorage.removeItem('biology_club_records');
+        localStorage.removeItem('biology_club_diaries');
+        localStorage.removeItem('biology_club_active_id');
+        return INITIAL_MEMBERS;
+      }
+      return parsed;
+    }
+    return INITIAL_MEMBERS;
   });
 
-  // 1. Google Auth Subscription
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
-      setAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
+  const [records, setRecords] = useState<RecordTableItem[]>(() => {
+    const saved = localStorage.getItem('biology_club_records');
+    // Align with members status
+    const membersSaved = localStorage.getItem('biology_club_members');
+    if (!membersSaved) return INITIAL_RECORDS;
+    return saved ? JSON.parse(saved) : INITIAL_RECORDS;
+  });
 
-  // 2. Sync Members from Firestore
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'members'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data: Member[] = [];
-      snapshot.forEach((doc) => {
-        data.push(doc.data() as Member);
-      });
-      setMembers(data);
-    }, (error) => {
-      console.error("Member sync error:", error);
-    });
-    return () => unsubscribe();
-  }, [user]);
+  const [diaries, setDiaries] = useState<DiaryEntry[]>(() => {
+    const saved = localStorage.getItem('biology_club_diaries');
+    // Align with members status
+    const membersSaved = localStorage.getItem('biology_club_members');
+    if (!membersSaved) return INITIAL_DIARIES;
+    return saved ? JSON.parse(saved) : INITIAL_DIARIES;
+  });
 
-  // 3. Sync Records from Firestore
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'records'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data: RecordTableItem[] = [];
-      snapshot.forEach((doc) => {
-        data.push(doc.data() as RecordTableItem);
-      });
-      setRecords(data);
-    }, (error) => {
-      console.error("Records sync error:", error);
-    });
-    return () => unsubscribe();
-  }, [user]);
+  const [activeMemberId, setActiveMemberId] = useState<string>(() => {
+    const saved = localStorage.getItem('biology_club_active_id');
+    const membersSaved = localStorage.getItem('biology_club_members');
+    if (!membersSaved || saved === 'm1') return '';
+    if (saved) return saved;
+    return INITIAL_MEMBERS[0]?.id || '';
+  });
 
-  // 4. Sync Diaries from Firestore
+  // Save states to local storage on changes
   useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'diaries'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data: DiaryEntry[] = [];
-      snapshot.forEach((doc) => {
-        data.push(doc.data() as DiaryEntry);
-      });
-      setDiaries(data);
-    }, (error) => {
-      console.error("Diaries sync error:", error);
-    });
-    return () => unsubscribe();
-  }, [user]);
+    localStorage.setItem('biology_club_members', JSON.stringify(members));
+  }, [members]);
 
-  // Save selected active member ID locally
+  useEffect(() => {
+    localStorage.setItem('biology_club_records', JSON.stringify(records));
+  }, [records]);
+
+  useEffect(() => {
+    localStorage.setItem('biology_club_diaries', JSON.stringify(diaries));
+  }, [diaries]);
+
   useEffect(() => {
     localStorage.setItem('biology_club_active_id', activeMemberId);
   }, [activeMemberId]);
@@ -101,155 +80,65 @@ export default function App() {
   // Derived state
   const activeMember = members.find((m) => m.id === activeMemberId);
 
-  // 5. Action Handlers (Writing to Firestore)
-  const handleAddMember = async (newMemberData: Omit<Member, 'id'>) => {
+  // 2. Action Handlers
+  const handleAddMember = (newMemberData: Omit<Member, 'id'>) => {
     const newId = `m-${Date.now()}`;
     const created: Member = {
       id: newId,
       ...newMemberData,
     };
-    try {
-      await setDoc(doc(db, 'members', newId), created);
-      setActiveMemberId(newId); // Auto-login as newly created member
-    } catch (e) {
-      console.error("Failed to add member to Firestore:", e);
-    }
+    setMembers((prev) => [...prev, created]);
+    setActiveMemberId(newId); // Auto-login as newly created member
   };
 
-  const handleUpdateRecord = async (updated: RecordTableItem) => {
-    try {
-      await setDoc(doc(db, 'records', updated.id), updated);
-    } catch (e) {
-      console.error("Failed to update record in Firestore:", e);
-    }
+  const handleUpdateRecord = (updated: RecordTableItem) => {
+    setRecords((prev) =>
+      prev.map((item) => (item.id === updated.id ? updated : item))
+    );
   };
 
-  const handleAddRecordArea = async (areaName: string, assignedMemberId: string) => {
-    const newId = `r-${Date.now()}`;
+  const handleAddRecordArea = (areaName: string, assignedMemberId: string) => {
     const newArea: RecordTableItem = {
-      id: newId,
+      id: `r-${Date.now()}`,
       areaName,
       assignedMemberId,
       status: 'excellent',
       lastChecked: new Date().toISOString().split('T')[0],
       latestNote: '新規エリアが作成されました。活動記録を開始してください。',
     };
-    try {
-      await setDoc(doc(db, 'records', newId), newArea);
-    } catch (e) {
-      console.error("Failed to add record area to Firestore:", e);
-    }
+    setRecords((prev) => [...prev, newArea]);
   };
 
-  const handleAddDiary = async (newDiaryData: Omit<DiaryEntry, 'id' | 'createdAt'>) => {
-    const newId = `d-${Date.now()}`;
+  const handleAddDiary = (newDiaryData: Omit<DiaryEntry, 'id' | 'createdAt'>) => {
     const newDiary: DiaryEntry = {
-      id: newId,
+      id: `d-${Date.now()}`,
       ...newDiaryData,
       createdAt: new Date().toISOString(),
     };
-    try {
-      await setDoc(doc(db, 'diaries', newId), newDiary);
-    } catch (e) {
-      console.error("Failed to add diary entry to Firestore:", e);
-    }
+    setDiaries((prev) => [newDiary, ...prev]); // Prepend new entry
   };
 
-  const handleDeleteDiary = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'diaries', id));
-    } catch (e) {
-      console.error("Failed to delete diary entry from Firestore:", e);
-    }
+  const handleDeleteDiary = (id: string) => {
+    setDiaries((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const handleResetData = async () => {
+  const handleResetData = () => {
     if (
       confirm(
         '観察記録と部員リストのすべてのデータを初期状態にリセットします。よろしいですか？'
       )
     ) {
-      try {
-        const membersSnap = await getDocs(collection(db, 'members'));
-        const recordsSnap = await getDocs(collection(db, 'records'));
-        const diariesSnap = await getDocs(collection(db, 'diaries'));
-
-        const batch = writeBatch(db);
-        membersSnap.forEach((d) => batch.delete(d.ref));
-        recordsSnap.forEach((d) => batch.delete(d.ref));
-        diariesSnap.forEach((d) => batch.delete(d.ref));
-        await batch.commit();
-
-        setActiveMemberId('');
-      } catch (e) {
-        console.error("Failed to reset Firestore data:", e);
-      }
+      localStorage.clear();
+      setMembers(INITIAL_MEMBERS);
+      setRecords(INITIAL_RECORDS);
+      setDiaries(INITIAL_DIARIES);
+      setActiveMemberId('');
     }
   };
 
   // Quick statistics
   const totalDiaries = diaries.length;
   const maintenanceNeeded = records.filter((r) => r.status === 'maintenance').length;
-
-  if (authLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center text-3xl shadow-xl shadow-emerald-900/10 mx-auto animate-pulse">
-            🌿
-          </div>
-          <p className="text-xs font-bold text-slate-400 animate-pulse font-mono tracking-wider">読み込み中...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-emerald-50 via-slate-50 to-teal-50 px-4">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-md w-full bg-white rounded-3xl p-8 border border-emerald-100 shadow-xl shadow-emerald-900/5 space-y-8 relative overflow-hidden"
-        >
-          <div className="absolute right-[-40px] top-[-40px] w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl"></div>
-          <div className="absolute left-[-40px] bottom-[-40px] w-40 h-40 bg-teal-500/10 rounded-full blur-3xl"></div>
-
-          <div className="text-center space-y-3 relative z-10">
-            <div className="w-16 h-16 bg-gradient-to-tr from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center text-3xl shadow-lg shadow-emerald-500/25 mx-auto">
-              🌿
-            </div>
-            <div>
-              <h1 className="text-xl font-black text-slate-800 tracking-tight">北高生物同好会</h1>
-              <p className="text-xs text-emerald-600 font-mono tracking-wider mt-0.5">BIOLOGY CLUB PORTAL</p>
-            </div>
-            <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
-              こちらは北高生物同好会の活動記録・観察日記システムです。サインインして活動を開始してください。
-            </p>
-          </div>
-
-          <div className="space-y-4 relative z-10">
-            <button
-              onClick={signInWithGoogle}
-              className="w-full flex items-center justify-center gap-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold py-3.5 px-4 rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer hover:scale-101 active:scale-99"
-            >
-              {/* Google Vector Icon */}
-              <svg className="w-4 h-4 fill-current text-white" viewBox="0 0 24 24">
-                <path d="M12.24 10.285V13.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.859-3.578-7.859-8s3.529-8 7.859-8c2.46 0 4.105 1.025 5.047 1.926l2.427-2.334C17.955 2.192 15.34 1 12.24 1 6.033 1 12.24s5.033 11.24 11.24 11.24c6.478 0 10.793-4.537 10.793-10.986 0-.746-.08-1.32-.176-1.886H12.24z" />
-              </svg>
-              Google アカウントでサインイン
-            </button>
-          </div>
-
-          <div className="text-center relative z-10">
-            <p className="text-[10px] text-slate-400 leading-relaxed">
-              ※学校の Google アカウントまたは個人のアカウントをご使用ください。
-            </p>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-800 overflow-x-hidden">
@@ -295,46 +184,19 @@ export default function App() {
             </div>
           </div>
           
-          <div className="pt-6 border-t border-emerald-900/60 space-y-4">
-            {/* Google User Card */}
-            <div className="flex items-center gap-2.5 bg-emerald-900/20 p-2.5 rounded-2xl border border-emerald-800/20">
-              {user.photoURL ? (
-                <img
-                  src={user.photoURL}
-                  alt={user.displayName || 'Google User'}
-                  className="w-8 h-8 rounded-full object-cover border border-emerald-700 shadow-inner"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-emerald-800 border border-emerald-600 flex items-center justify-center text-xs font-black text-white">
-                  G
-                </div>
-              )}
-              <div className="flex-1 overflow-hidden">
-                <p className="text-xs font-bold text-white truncate leading-tight">{user.displayName || 'Googleユーザー'}</p>
-                <p className="text-[9px] text-emerald-400/95 truncate leading-tight mt-0.5">{user.email}</p>
-              </div>
-            </div>
-
-            {/* Currently Operating Member Info */}
-            <div className="flex items-center gap-3 bg-emerald-900/40 p-2.5 rounded-2xl border border-emerald-800/30">
-              <div className="w-7 h-7 rounded-full bg-emerald-700 border border-emerald-600 flex items-center justify-center text-xs font-bold text-emerald-100 shadow-inner">
+          <div className="pt-6 border-t border-emerald-900/60">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-emerald-800 border border-emerald-600 flex items-center justify-center text-xs font-black text-emerald-100 shadow-inner">
                 {activeMember?.name.charAt(0) || '👤'}
               </div>
               <div className="flex-1 overflow-hidden">
-                <p className="text-[9px] text-emerald-400 font-bold leading-tight uppercase">操作部員</p>
-                <p className="text-xs font-semibold text-emerald-100 truncate leading-tight mt-0.5">
-                  {activeMember?.name || '未選択'}
+                <p className="text-xs font-semibold text-white truncate">{activeMember?.name || 'ゲスト部員'}</p>
+                <p className="text-[10px] text-emerald-400 font-medium flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-ping"></span>
+                  ログイン中
                 </p>
               </div>
             </div>
-
-            <button
-              onClick={logOut}
-              className="w-full text-center py-2 px-3 text-[10px] font-bold text-emerald-300 hover:text-white bg-emerald-900/30 hover:bg-emerald-900/70 border border-emerald-800/20 hover:border-emerald-700/50 rounded-xl transition-all cursor-pointer"
-            >
-              Googleからログアウト
-            </button>
           </div>
         </div>
       </nav>
@@ -366,17 +228,6 @@ export default function App() {
               onSetActiveMemberId={setActiveMemberId}
               onAddMember={handleAddMember}
             />
-
-            {/* Mobile Logout Button */}
-            <button
-              onClick={logOut}
-              className="lg:hidden p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-slate-200 transition-all cursor-pointer"
-              title="Googleからログアウト"
-            >
-              <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-            </button>
           </div>
         </header>
 
