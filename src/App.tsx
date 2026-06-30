@@ -13,6 +13,7 @@ import {
 import MemberSelector from './components/MemberSelector';
 import RecordTable from './components/RecordTable';
 import DiarySection from './components/DiarySection';
+import AIQuizCard from './components/AIQuizCard';
 import { Leaf, Award, RotateCcw, Info, CheckSquare, CalendarDays } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -151,7 +152,7 @@ export default function App() {
                 🌿
               </div>
               <div>
-                <h1 className="text-sm font-bold leading-tight text-white tracking-wide">北高生物同好会</h1>
+                <h1 className="text-sm font-bold leading-tight text-white tracking-wide">星槎もみじ中学校生物同好会</h1>
                 <p className="text-[10px] text-emerald-400/80 font-mono tracking-wider">BIOLOGY CLUB PORTAL</p>
               </div>
             </div>
@@ -248,7 +249,7 @@ export default function App() {
               <div className="relative z-10 space-y-6">
                 <div className="space-y-2">
                   <p className="text-emerald-400 text-xs font-bold tracking-wider uppercase flex items-center gap-1.5">
-                    🌱 ようこそ、北高生物同好会システムへ！
+                    🌱 ようこそ、星槎もみじ中学校生物同好会システムへ！
                   </p>
                   <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white leading-tight">
                     最初の部員登録から、日々の観察とお世話をスタートしましょう。
@@ -384,6 +385,7 @@ export default function App() {
                 onUpdateRecord={handleUpdateRecord}
                 onAddRecordArea={handleAddRecordArea}
               />
+              {members.length > 0 && <AIQuizCard />}
             </div>
 
             {/* Right Column: Observation Diaries Section (col-span-7) */}
@@ -403,7 +405,7 @@ export default function App() {
         {/* Footer & Operations Panel */}
         <footer className="max-w-7xl mx-auto px-6 sm:px-8 mt-auto py-8 border-t border-slate-200 text-xs text-slate-400 w-full">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p>© 2026 北高生物同好会 観察日記・記録システム. All rights reserved.</p>
+            <p>© 2026 星槎もみじ中学校生物同好会 観察日記・記録システム. All rights reserved.</p>
             <div className="flex items-center gap-4">
               <button
                 id="btn-reset-app"

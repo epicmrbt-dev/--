@@ -5,8 +5,9 @@
 
 import React, { useState } from 'react';
 import { RecordTableItem, Member, RecordStatus } from '../types';
-import { CheckCircle2, AlertTriangle, Wrench, Calendar, User, PenSquare, X, Save, Plus } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Wrench, Calendar, User, PenSquare, X, Save, Plus, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import AIAdvisorModal from './AIAdvisorModal';
 
 interface RecordTableProps {
   records: RecordTableItem[];
@@ -23,6 +24,17 @@ export default function RecordTable({
 }: RecordTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAddAreaForm, setShowAddAreaForm] = useState(false);
+  const [advisorItem, setAdvisorItem] = useState<RecordTableItem | null>(null);
+
+  const getMemberNameOnly = (id: string) => {
+    const m = members.find((member) => member.id === id);
+    return m ? m.name : '未選択';
+  };
+
+  const getMemberGradeOnly = (id: string) => {
+    const m = members.find((member) => member.id === id);
+    return m ? m.grade : undefined;
+  };
 
   // Edit states
   const [editAssignedId, setEditAssignedId] = useState('');
@@ -351,11 +363,22 @@ export default function RecordTable({
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
+                      {members.length > 0 && (
+                        <button
+                          id={`btn-ai-advisor-${item.id}`}
+                          onClick={() => setAdvisorItem(item)}
+                          className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100/85 border border-emerald-200 text-emerald-900 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all shadow-3xs cursor-pointer"
+                          title="AI顧問のアドバイス"
+                        >
+                          <Sparkles className="w-3 h-3 text-emerald-600 animate-pulse" />
+                          AI診断
+                        </button>
+                      )}
                       {getStatusBadge(item.status)}
                       <button
                         id={`btn-edit-record-${item.id}`}
                         onClick={() => handleStartEdit(item)}
-                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-emerald-700 transition-all border border-slate-200/50"
+                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-emerald-700 transition-all border border-slate-200/50 cursor-pointer"
                         title="担当者・記録を編集"
                       >
                         <PenSquare className="w-3.5 h-3.5" />
@@ -382,6 +405,16 @@ export default function RecordTable({
           </div>
         )}
       </div>
+
+      <AIAdvisorModal
+        isOpen={advisorItem !== null}
+        onClose={() => setAdvisorItem(null)}
+        areaName={advisorItem?.areaName || ''}
+        status={advisorItem?.status || 'excellent'}
+        latestNote={advisorItem?.latestNote || ''}
+        memberName={advisorItem ? getMemberNameOnly(advisorItem.assignedMemberId) : ''}
+        grade={advisorItem ? getMemberGradeOnly(advisorItem.assignedMemberId) : undefined}
+      />
     </div>
   );
 }
